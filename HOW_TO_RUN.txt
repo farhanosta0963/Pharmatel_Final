@@ -1,0 +1,18 @@
+to run [database (PostgreSQL) + backend (springboot)] you only need to :
+1- install docker on the host machine 
+2- cd Pharmatel_backend
+3- docker compose up -d --build
+and everything will work automatically 
+
+to run patient mobile application :
+1- install node/latest
+2- cd Pharmatel_patient_mobileApplication
+3- npm install 
+4- npm start
+
+to run pharmacist pc application on a windows pc :
+1- install dotnet 10.0
+2- cd Pharmatel_pharmacist_pcApplicaiton
+3- cd Pharmatel.DesktopUi
+4- dotnet run 
+

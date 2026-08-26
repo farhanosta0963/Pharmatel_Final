@@ -1,0 +1,147 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v10.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v10.0": {
+      "CsvHelper/33.1.0": {
+        "runtime": {
+          "lib/net9.0/CsvHelper.dll": {
+            "assemblyVersion": "33.0.0.0",
+            "fileVersion": "33.1.0.26"
+          }
+        }
+      },
+      "Guna.UI2.WinForms/2.0.4.8": {
+        "dependencies": {
+          "System.Management": "7.0.0"
+        },
+        "runtime": {
+          "lib/net7.0-windows7.0/Guna.UI2.dll": {
+            "assemblyVersion": "2.0.4.8",
+            "fileVersion": "2.0.4.8"
+          }
+        }
+      },
+      "Microsoft.Windows.SDK.Contracts/10.0.26100.4948": {
+        "dependencies": {
+          "System.Runtime.InteropServices.WindowsRuntime": "4.3.0",
+          "System.Runtime.WindowsRuntime": "4.6.0",
+          "System.Runtime.WindowsRuntime.UI.Xaml": "4.6.0"
+        }
+      },
+      "System.Management/7.0.0": {
+        "runtime": {
+          "lib/net7.0/System.Management.dll": {
+            "assemblyVersion": "4.0.0.0",
+            "fileVersion": "7.0.22.51805"
+          }
+        },
+        "runtimeTargets": {
+          "runtimes/win/lib/net7.0/System.Management.dll": {
+            "rid": "win",
+            "assetType": "runtime",
+            "assemblyVersion": "4.0.0.0",
+            "fileVersion": "7.0.22.51805"
+          }
+        }
+      },
+      "System.Runtime.InteropServices.WindowsRuntime/4.3.0": {
+        "runtime": {
+          "lib/netstandard1.3/System.Runtime.InteropServices.WindowsRuntime.dll": {
+            "assemblyVersion": "4.0.2.0",
+            "fileVersion": "4.6.24705.1"
+          }
+        }
+      },
+      "System.Runtime.WindowsRuntime/4.6.0": {
+        "runtime": {
+          "lib/netstandard2.0/System.Runtime.WindowsRuntime.dll": {
+            "assemblyVersion": "4.0.14.0",
+            "fileVersion": "4.700.19.46214"
+          }
+        },
+        "runtimeTargets": {
+          "runtimes/win/lib/netcoreapp3.0/System.Runtime.WindowsRuntime.dll": {
+            "rid": "win",
+            "assetType": "runtime",
+            "assemblyVersion": "4.0.14.0",
+            "fileVersion": "4.700.19.46214"
+          }
+        }
+      },
+      "System.Runtime.WindowsRuntime.UI.Xaml/4.6.0": {
+        "dependencies": {
+          "System.Runtime.WindowsRuntime": "4.6.0"
+        },
+        "runtime": {
+          "lib/netstandard2.0/System.Runtime.WindowsRuntime.UI.Xaml.dll": {
+            "assemblyVersion": "4.0.4.0",
+            "fileVersion": "4.700.19.46214"
+          }
+        },
+        "runtimeTargets": {
+          "runtimes/win/lib/netcoreapp3.0/System.Runtime.WindowsRuntime.UI.Xaml.dll": {
+            "rid": "win",
+            "assetType": "runtime",
+            "assemblyVersion": "4.0.4.0",
+            "fileVersion": "4.700.19.46214"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "CsvHelper/33.1.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-kqfTOZGrn7NarNeXgjh86JcpTHUoeQDMB8t9NVa/ZtlSYiV1rxfRnQ49WaJsob4AiGrbK0XDzpyKkBwai4F8eg==",
+      "path": "csvhelper/33.1.0",
+      "hashPath": "csvhelper.33.1.0.nupkg.sha512"
+    },
+    "Guna.UI2.WinForms/2.0.4.8": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-fIY3+UIuuxGAPQACC+DRrRS3kkcrdaKGWvjrWoa5AVkjfXjQci34EYr2iMlWchvmzptEiGKE3sqZYmnBvj9JVw==",
+      "path": "guna.ui2.winforms/2.0.4.8",
+      "hashPath": "guna.ui2.winforms.2.0.4.8.nupkg.sha512"
+    },
+    "Microsoft.Windows.SDK.Contracts/10.0.26100.4948": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-c1+nxEUowRagzF7RSw01aU/ePZH50mmsPunNqUKrU4WqPJE+WORdimsKc5NVcoy1KbHm2dERSUg/GaDBlR0yEA==",
+      "path": "microsoft.windows.sdk.contracts/10.0.26100.4948",
+      "hashPath": "microsoft.windows.sdk.contracts.10.0.26100.4948.nupkg.sha512"
+    },
+    "System.Management/7.0.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-A4jed4QUviDOm7fJNKAJObEAEkEUXmkGL/w0iyCYTzrl1rezTj8LGFHfsVst4Vb9JwFcTpboiDrvdST48avBpw==",
+      "path": "system.management/7.0.0",
+      "hashPath": "system.management.7.0.0.nupkg.sha512"
+    },
+    "System.Runtime.InteropServices.WindowsRuntime/4.3.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-J4GUi3xZQLUBasNwZnjrffN8i5wpHrBtZoLG+OhRyGo/+YunMRWWtwoMDlUAIdmX0uRfpHIBDSV6zyr3yf00TA==",
+      "path": "system.runtime.interopservices.windowsruntime/4.3.0",
+      "hashPath": "system.runtime.interopservices.windowsruntime.4.3.0.nupkg.sha512"
+    },
+    "System.Runtime.WindowsRuntime/4.6.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-IWrs1TmbxP65ZZjIglNyvDkFNoV5q2Pofg5WO7I8RKQOpLdFprQSh3xesOoClBqR4JHr4nEB1Xk1MqLPW1jPuQ==",
+      "path": "system.runtime.windowsruntime/4.6.0",
+      "hashPath": "system.runtime.windowsruntime.4.6.0.nupkg.sha512"
+    },
+    "System.Runtime.WindowsRuntime.UI.Xaml/4.6.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-r4tNw5v5kqRJ9HikWpcyNf3suGw7DjX93svj9iBjtdeLqL8jt9Z+7f+s4wrKZJr84u8IMsrIjt8K6jYvkRqMSg==",
+      "path": "system.runtime.windowsruntime.ui.xaml/4.6.0",
+      "hashPath": "system.runtime.windowsruntime.ui.xaml.4.6.0.nupkg.sha512"
+    }
+  }
+}

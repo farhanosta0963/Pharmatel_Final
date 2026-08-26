@@ -1,0 +1,74 @@
+{
+  "expo": {
+    "name": "PharmaTel",
+    "slug": "pharmatel",
+    "version": "1.0.0",
+    "sdkVersion": "54.0.0",
+    "orientation": "portrait",
+    "updates": {
+      "enabled": false
+    },
+    "icon": "./assets/images/icon.png",
+    "scheme": "pharmatel",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSUserNotificationsUsageDescription": "PharmaTel uses notifications to remind you when to take your medications."
+      }
+    },
+    "android": {
+      "package": "com.anonymous.pharmatel",
+      "permissions": [
+        "POST_NOTIFICATIONS",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/images/icon.png"
+    },
+    "plugins": [
+      [
+        "expo-router",
+        {
+          "origin": "https://replit.com/"
+        }
+      ],
+      "expo-font",
+      "expo-web-browser",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "PharmaTel uses your location to show nearby pharmacies and sort them by distance."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#0d9488",
+          "defaultChannel": "dose-reminders"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "extra": {
+      "router": {
+        "origin": "https://replit.com/"
+      },
+      "eas": {
+        "projectId": "aa1ea19e-9a82-43a3-8973-73b4f1f65f60"
+      }
+    }
+  }
+}

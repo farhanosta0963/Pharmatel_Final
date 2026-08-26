@@ -1,0 +1,1907 @@
+import { Feather } from "@expo/vector-icons";
+import { router } from "expo-router";
+import React, { useMemo, useState } from "react";
+import {
+  Alert,
+  FlatList,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  useColorScheme,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Colors from "@/constants/colors";
+import { useApp } from "@/context/AppContext";
+import { getLocaleForLanguage, type TranslationKey } from "@/lib/i18n";
+import type { DiaryEntry, ObservationSession } from "@/models";
+import { getMetricDef, MOOD_LABELS } from "@/services/diaryMetrics";
+import { exportHtmlFile } from "@/services/fileExport";
+import { toLocalIso } from "@/utils/time";
+
+/* ─── helpers ─────────────────────────────────────────────────────────────── */
+
+function formatDate(
+  dateStr: string,
+  locale = "en-US",
+  todayLabel = "Today",
+  yesterdayLabel = "Yesterday",
+) {
+  const d = new Date(dateStr + "T00:00:00");
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (d.toDateString() === today.toDateString()) return todayLabel;
+  if (d.toDateString() === yesterday.toDateString()) return yesterdayLabel;
+  return d.toLocaleDateString(locale, {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function shortDate(
+  dateStr: string,
+  locale = "en-US",
+  todayLabel = "Today",
+  yesterdayLabel = "Yesterday",
+) {
+  const d = new Date(dateStr + "T00:00:00");
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (d.toDateString() === today.toDateString()) return todayLabel;
+  if (d.toDateString() === yesterday.toDateString()) return yesterdayLabel;
+  return d.toLocaleDateString(locale, { month: "short", day: "numeric" });
+}
+
+function groupByDate(entries: DiaryEntry[]): Map<string, DiaryEntry[]> {
+  const map = new Map<string, DiaryEntry[]>();
+  for (const e of entries) {
+    const list = map.get(e.date) ?? [];
+    list.push(e);
+    map.set(e.date, list);
+  }
+  return map;
+}
+
+const metricLabelKeys: Record<string, TranslationKey> = {
+  temperature: "temperature",
+  weight: "weight",
+  "heart rate": "heartRate",
+  heart_rate: "heartRate",
+  heartrate: "heartRate",
+  "bp systolic": "bpSystolic",
+  bp_systolic: "bpSystolic",
+  bpsystolic: "bpSystolic",
+  "bp diastolic": "bpDiastolic",
+  bp_diastolic: "bpDiastolic",
+  bpdiastolic: "bpDiastolic",
+  "blood oxygen": "bloodOxygen",
+  blood_oxygen: "bloodOxygen",
+  bloodoxygen: "bloodOxygen",
+  "blood sugar": "bloodSugar",
+  blood_sugar: "bloodSugar",
+  bloodsugar: "bloodSugar",
+  "pain level": "painLevel",
+  pain_level: "painLevel",
+  painlevel: "painLevel",
+  sleep: "sleep",
+  sleep_hours: "sleep",
+  "sleep hours": "sleep",
+  "water intake": "waterIntake",
+  water_intake: "waterIntake",
+  waterintake: "waterIntake",
+  steps: "steps",
+  "custom note": "customNote",
+  note: "customNote",
+};
+
+function getMetricLabelKey(metric: DiaryEntry["metrics"][number]) {
+  const typeKey = metric.type.trim().toLowerCase();
+  const labelKey = metric.label.trim().toLowerCase();
+  return metricLabelKeys[typeKey] ?? metricLabelKeys[labelKey];
+}
+
+const moodLabelKeys: Record<string, TranslationKey> = {
+  "Very Bad": "veryBad",
+  Bad: "bad",
+  Okay: "okay",
+  Good: "good",
+  Great: "great",
+};
+
+function parseMoodValue(value: string | number | boolean): number | undefined {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : undefined;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  if (!normalized) return undefined;
+
+  const numeric = Number.parseInt(normalized, 10);
+  if (Number.isFinite(numeric) && MOOD_LABELS[numeric]) {
+    return numeric;
+  }
+
+  const match = Object.entries(MOOD_LABELS).find(
+    ([, mood]) => mood.label.trim().toLowerCase() === normalized,
+  );
+
+  return match ? Number(match[0]) : undefined;
+}
+
+function mapObservationSessionsToDiaryEntries(
+  sessions: ObservationSession[],
+): DiaryEntry[] {
+  const normalizeMetricValue = (
+    value: string | number | boolean,
+  ): string | number => {
+    if (typeof value === "boolean") {
+      return value ? "Yes" : "No";
+    }
+    return value;
+  };
+
+  return sessions
+    .map((session) => {
+      const at = session.endedAt ?? session.startedAt;
+      const dateObj = new Date(at);
+      const isValidDate = !Number.isNaN(dateObj.getTime());
+      const date = isValidDate ? toLocalIso(dateObj) : toLocalIso();
+      const time = isValidDate
+        ? `${String(dateObj.getHours()).padStart(2, "0")}:${String(
+            dateObj.getMinutes(),
+          ).padStart(2, "0")}`
+        : "00:00";
+
+      const metrics: DiaryEntry["metrics"] = [];
+      let mood: DiaryEntry["mood"];
+      const notes: string[] = [];
+
+      for (const observation of session.observations) {
+        const name = observation.symptomDefinition.name.trim().toLowerCase();
+        const type = observation.symptomDefinitionId.trim().toLowerCase();
+
+        if (type === "mood" || name === "mood") {
+          const parsedMood = parseMoodValue(observation.value);
+          if (parsedMood !== undefined) {
+            mood = parsedMood;
+          }
+          continue;
+        }
+
+        if (
+          type === "general_notes" ||
+          name === "general notes" ||
+          name === "notes"
+        ) {
+          const noteValue = String(observation.value ?? "").trim();
+          if (noteValue) {
+            notes.push(noteValue);
+          }
+          continue;
+        }
+
+        metrics.push({
+          id: observation.id,
+          type: observation.symptomDefinitionId,
+          label: observation.symptomDefinition.name,
+          value: normalizeMetricValue(observation.value),
+          unit: observation.symptomDefinition.unit ?? "",
+          icon: "activity",
+        });
+      }
+
+      return {
+        id: session.id,
+        patientId: "",
+        date,
+        time,
+        metrics,
+        generalNotes: notes.length > 0 ? notes.join("\n") : undefined,
+        mood,
+        createdAt: at,
+      } satisfies DiaryEntry;
+    })
+    .sort((a, b) => {
+      const dateCmp = b.date.localeCompare(a.date);
+      if (dateCmp !== 0) return dateCmp;
+      return b.time.localeCompare(a.time);
+    });
+}
+
+function buildDiaryHtml(entries: DiaryEntry[], patientName: string): string {
+  const escapeHtml = (value: unknown) =>
+    String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  const exportedDate = new Date().toLocaleDateString("en-US", {
+    dateStyle: "full",
+  });
+  let html = `<!doctype html><html><head><meta charset="utf-8"><title>PharmaTel Health Diary</title><style>
+    body{font-family:Arial,sans-serif;background:#f4f7f7;color:#203333;margin:0;padding:32px}.report{max-width:760px;margin:auto}
+    .hero{background:#0d9488;color:white;padding:28px;border-radius:16px;margin-bottom:20px}h1{margin:0 0 12px;font-size:26px}.meta{opacity:.9}
+    .date{color:#dc2626;font-weight:700}.day{background:white;border:1px solid #d9e5e3;border-radius:12px;padding:20px;margin:14px 0;box-shadow:0 3px 12px #1231}
+    h2{margin:0 0 12px;color:#0d766d;font-size:19px}.entry{border-top:1px solid #e5eeee;padding:12px 0}.entry:first-of-type{border-top:0}.row{padding:5px 0}.icon{display:inline-block;width:28px}
+  </style></head><body><main class="report"><header class="hero"><h1>📔 PharmaTel | Health Diary</h1><div class="meta">👤 Patient: ${escapeHtml(patientName)}<br>📅 Exported: <span class="date">${escapeHtml(exportedDate)}</span><br>📋 Total entries: ${entries.length}</div></header>`;
+  if (entries.length === 0)
+    return `${html}<section class="day">No diary entries available.</section></main></body></html>`;
+
+  const grouped = groupByDate(entries);
+  for (const [date, dayEntries] of grouped) {
+    html += `<section class="day"><h2>📅 <span class="date">${escapeHtml(formatDate(date))}</span> <small>(${escapeHtml(date)})</small></h2>`;
+    for (const entry of dayEntries) {
+      html += `<div class="entry"><div class="row"><span class="icon">⏰</span><b>Time:</b> ${escapeHtml(entry.time)}</div>`;
+      if (entry.mood) {
+        const m = MOOD_LABELS[entry.mood];
+        html += `<div class="row"><span class="icon">🙂</span><b>Mood:</b> ${escapeHtml(m.label)}</div>`;
+      }
+      for (const metric of entry.metrics) {
+        html += `<div class="row"><span class="icon">📊</span><b>${escapeHtml(metric.label)}:</b> ${escapeHtml(metric.value)}${metric.unit ? ` ${escapeHtml(metric.unit)}` : ""}</div>`;
+      }
+      if (entry.generalNotes) {
+        html += `<div class="row"><span class="icon">📝</span><b>Notes:</b> ${escapeHtml(entry.generalNotes)}</div>`;
+      }
+      html += "</div>";
+    }
+    html += "</section>";
+  }
+  return `${html}</main></body></html>`;
+}
+
+/* ─── vitals header card ─────────────────────────────────────────────────── */
+
+function VitalsCard({
+  label,
+  value,
+  unit,
+  icon,
+  color,
+  colors,
+}: {
+  label: string;
+  value: string | number;
+  unit: string;
+  icon: string;
+  color: string;
+  colors: (typeof Colors)["light"];
+}) {
+  return (
+    <View
+      style={[
+        vStyles.vCard,
+        {
+          backgroundColor: colors.surface,
+          borderColor: color + "25",
+          shadowColor: color,
+        },
+      ]}
+    >
+      <View style={[vStyles.vIcon, { backgroundColor: color + "18" }]}>
+        <Feather name={icon as any} size={14} color={color} />
+      </View>
+      <Text style={[vStyles.vValue, { color: colors.text }]}>
+        {value}
+        <Text style={[vStyles.vUnit, { color: color }]}> {unit}</Text>
+      </Text>
+      <Text style={[vStyles.vLabel, { color: colors.textMuted }]}>{label}</Text>
+    </View>
+  );
+}
+
+const vStyles = StyleSheet.create({
+  vCard: {
+    width: 90,
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    gap: 5,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  vIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  vValue: {
+    fontSize: 17,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: -0.5,
+    textAlign: "center",
+  },
+  vUnit: {
+    fontSize: 10,
+    fontFamily: "Inter_600SemiBold",
+  },
+  vLabel: {
+    fontSize: 10,
+    fontFamily: "Inter_500Medium",
+    textAlign: "center",
+    lineHeight: 13,
+  },
+});
+
+/* ─── timeline entry card ────────────────────────────────────────────────── */
+
+function MetricChip({
+  metric,
+  colors,
+  t,
+}: {
+  metric: DiaryEntry["metrics"][number];
+  colors: (typeof Colors)["light"];
+  t: (key: TranslationKey) => string;
+}) {
+  const def = getMetricDef(metric.type);
+  const color = def?.color ?? colors.primary;
+  return (
+    <View
+      style={[
+        tlStyles.chip,
+        { backgroundColor: color + "12", borderColor: color + "28" },
+      ]}
+    >
+      <Feather name={metric.icon as any} size={11} color={color} />
+      <Text style={[tlStyles.chipValue, { color }]}>
+        {metric.value}
+        {metric.unit ? (
+          <Text style={[tlStyles.chipUnit, { color: color + "BB" }]}>
+            {" "}
+            {metric.unit}
+          </Text>
+        ) : null}
+      </Text>
+      <Text style={[tlStyles.chipLabel, { color: colors.textMuted }]}>
+        {getMetricLabelKey(metric)
+          ? t(getMetricLabelKey(metric) as TranslationKey)
+          : metric.label}
+      </Text>
+    </View>
+  );
+}
+
+function TimelineEntry({
+  entry,
+  isFirst,
+  isLast,
+  isLastOfDay,
+  colors,
+  t,
+  onEdit,
+  onDelete,
+}: {
+  entry: DiaryEntry;
+  isFirst: boolean;
+  isLast: boolean;
+  isLastOfDay: boolean;
+  colors: (typeof Colors)["light"];
+  t: (key: TranslationKey) => string;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const mood = entry.mood ? MOOD_LABELS[entry.mood] : null;
+  const accentColor = mood ? mood.color : colors.primary;
+
+  return (
+    <View style={tlStyles.row}>
+      {/* ── timeline rail ── */}
+      <View style={tlStyles.rail}>
+        {/* top connector line */}
+        <View
+          style={[
+            tlStyles.lineTop,
+            {
+              backgroundColor: isFirst ? "transparent" : colors.borderLight,
+            },
+          ]}
+        />
+        {/* dot */}
+        <View
+          style={[
+            tlStyles.dotOuter,
+            {
+              borderColor: accentColor + "50",
+              backgroundColor: accentColor + "12",
+            },
+          ]}
+        >
+          <View style={[tlStyles.dotInner, { backgroundColor: accentColor }]} />
+        </View>
+        {/* bottom connector line */}
+        <View
+          style={[
+            tlStyles.lineBottom,
+            {
+              backgroundColor: isLast ? "transparent" : colors.borderLight,
+            },
+          ]}
+        />
+      </View>
+
+      {/* ── entry card ── */}
+      <Pressable
+        onPress={onEdit}
+        style={({ pressed }) => [
+          tlStyles.card,
+          {
+            backgroundColor: colors.surface,
+            borderColor: colors.border,
+            shadowColor: colors.cardShadow,
+            opacity: pressed ? 0.94 : 1,
+            transform: [{ scale: pressed ? 0.99 : 1 }],
+          },
+        ]}
+      >
+        {/* mood accent bar */}
+        <View style={[tlStyles.accentBar, { backgroundColor: accentColor }]} />
+
+        <View style={tlStyles.cardInner}>
+          {/* header row */}
+          <View style={tlStyles.cardHeader}>
+            <View style={tlStyles.cardHeaderLeft}>
+              <Text style={[tlStyles.timeText, { color: accentColor }]}>
+                {entry.time}
+              </Text>
+              {mood && (
+                <View
+                  style={[
+                    tlStyles.moodPill,
+                    { backgroundColor: mood.color + "15" },
+                  ]}
+                >
+                  <Text style={tlStyles.moodEmoji}>{mood.emoji}</Text>
+                  <Text style={[tlStyles.moodText, { color: mood.color }]}>
+                    {moodLabelKeys[mood.label]
+                      ? t(moodLabelKeys[mood.label])
+                      : mood.label}
+                  </Text>
+                </View>
+              )}
+            </View>
+            <Pressable
+              onPress={(event) => {
+                event.stopPropagation();
+                onDelete();
+              }}
+              hitSlop={14}
+              style={({ pressed }) => ({ opacity: pressed ? 0.4 : 0.7 })}
+            >
+              <Feather name="trash-2" size={14} color={colors.textMuted} />
+            </Pressable>
+          </View>
+
+          {/* metrics grid */}
+          {entry.metrics.length > 0 && (
+            <View style={tlStyles.metricsWrap}>
+              {entry.metrics.map((m) => (
+                <MetricChip key={m.id} metric={m} colors={colors} t={t} />
+              ))}
+            </View>
+          )}
+
+          {/* notes */}
+          {entry.generalNotes ? (
+            <View
+              style={[
+                tlStyles.notesRow,
+                { backgroundColor: colors.surfaceSecondary },
+              ]}
+            >
+              <Feather name="file-text" size={12} color={colors.textMuted} />
+              <Text
+                style={[tlStyles.notesText, { color: colors.textSecondary }]}
+                numberOfLines={3}
+              >
+                {entry.generalNotes}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      </Pressable>
+    </View>
+  );
+}
+
+/* ─── date section header ────────────────────────────────────────────────── */
+
+function DateSectionHeader({
+  date,
+  count,
+  isFirst,
+  colors,
+  locale,
+  todayLabel,
+  yesterdayLabel,
+}: {
+  date: string;
+  count: number;
+  isFirst: boolean;
+  colors: (typeof Colors)["light"];
+  locale: string;
+  todayLabel: string;
+  yesterdayLabel: string;
+}) {
+  const isToday = date === toLocalIso();
+  return (
+    <View style={[dhStyles.wrap, { marginTop: isFirst ? 0 : 24 }]}>
+      {/* left line stub */}
+      <View
+        style={[
+          dhStyles.lineBefore,
+          { backgroundColor: isFirst ? "transparent" : colors.borderLight },
+        ]}
+      />
+
+      {/* date pill */}
+      <View
+        style={[
+          dhStyles.pill,
+          {
+            backgroundColor: isToday ? colors.primary : colors.surfaceSecondary,
+            borderColor: isToday ? colors.primary : colors.border,
+          },
+        ]}
+      >
+        <Feather
+          name="calendar"
+          size={12}
+          color={isToday ? "#fff" : colors.textSecondary}
+        />
+        <Text
+          style={[dhStyles.pillText, { color: isToday ? "#fff" : colors.text }]}
+        >
+          {formatDate(date, locale, todayLabel, yesterdayLabel)}
+        </Text>
+        <View
+          style={[
+            dhStyles.countBadge,
+            {
+              backgroundColor: isToday
+                ? "rgba(255,255,255,0.25)"
+                : colors.primary + "18",
+            },
+          ]}
+        >
+          <Text
+            style={[
+              dhStyles.countText,
+              { color: isToday ? "#fff" : colors.primary },
+            ]}
+          >
+            {count}
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const dhStyles = StyleSheet.create({
+  wrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+    paddingLeft: 20,
+  },
+  lineBefore: {
+    width: 2,
+    height: 24,
+    borderRadius: 1,
+    position: "absolute",
+    left: 29,
+    top: -24,
+  },
+  pill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 24,
+    borderWidth: 1.5,
+  },
+  pillText: {
+    fontSize: 14,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: -0.2,
+  },
+  countBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  countText: {
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+  },
+});
+
+const tlStyles = StyleSheet.create({
+  row: {
+    flexDirection: "row",
+    paddingLeft: 20,
+    paddingRight: 16,
+    marginBottom: 10,
+  },
+  rail: {
+    width: 22,
+    alignItems: "center",
+    marginRight: 12,
+    flexShrink: 0,
+  },
+  lineTop: {
+    width: 2,
+    flex: 1,
+    minHeight: 12,
+    borderRadius: 1,
+  },
+  dotOuter: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  dotInner: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  lineBottom: {
+    width: 2,
+    flex: 1,
+    minHeight: 12,
+    borderRadius: 1,
+  },
+  card: {
+    flex: 1,
+    borderRadius: 16,
+    borderWidth: 1,
+    overflow: "hidden",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  accentBar: {
+    height: 3,
+    width: "100%",
+    borderRadius: 0,
+  },
+  cardInner: {
+    padding: 14,
+    gap: 10,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  cardHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+  },
+  timeText: {
+    fontSize: 16,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: -0.3,
+    minWidth: 52,
+    flexShrink: 0,
+    writingDirection: "ltr",
+    textAlign: "left",
+  },
+  moodPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  moodEmoji: { fontSize: 14 },
+  moodText: {
+    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
+  },
+  metricsWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  chipValue: {
+    fontSize: 13,
+    fontFamily: "Inter_700Bold",
+  },
+  chipUnit: {
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
+  },
+  chipLabel: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+  },
+  notesRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    padding: 10,
+    borderRadius: 10,
+  },
+  notesText: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    lineHeight: 18,
+    fontStyle: "italic",
+  },
+});
+
+/* ─── list item types ─────────────────────────────────────────────────────── */
+
+type ListItem =
+  | {
+      type: "sectionHeader";
+      date: string;
+      count: number;
+      key: string;
+      isFirst: boolean;
+    }
+  | {
+      type: "entry";
+      entry: DiaryEntry;
+      key: string;
+      isFirstOfDay: boolean;
+      isLastOfDay: boolean;
+      isAbsFirst: boolean;
+      isAbsLast: boolean;
+    };
+
+/* ─── calendar picker modal ──────────────────────────────────────────────── */
+
+function CalendarModal({
+  visible,
+  selectedDate,
+  entryDates,
+  colors,
+  onSelect,
+  onClose,
+  locale,
+  cancelLabel,
+  clearLabel,
+}: {
+  visible: boolean;
+  selectedDate: string | null;
+  entryDates: Set<string>;
+  colors: (typeof Colors)["light"];
+  onSelect: (date: string) => void;
+  onClose: () => void;
+  locale: string;
+  cancelLabel: string;
+  clearLabel: string;
+}) {
+  const todayStr = toLocalIso();
+  const [viewYear, setViewYear] = useState(() => new Date().getFullYear());
+  const [viewMonth, setViewMonth] = useState(() => new Date().getMonth()); // 0-based
+
+  const prevMonth = () => {
+    if (viewMonth === 0) {
+      setViewMonth(11);
+      setViewYear((y) => y - 1);
+    } else setViewMonth((m) => m - 1);
+  };
+  const nextMonth = () => {
+    if (viewMonth === 11) {
+      setViewMonth(0);
+      setViewYear((y) => y + 1);
+    } else setViewMonth((m) => m + 1);
+  };
+
+  // Build the grid cells for this month
+  const cells = useMemo(() => {
+    const firstDay = new Date(viewYear, viewMonth, 1).getDay(); // 0=Sun
+    const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+    const items: Array<{ dateStr: string; day: number } | null> = [];
+    for (let i = 0; i < firstDay; i++) items.push(null);
+    for (let d = 1; d <= daysInMonth; d++) {
+      const mm = String(viewMonth + 1).padStart(2, "0");
+      const dd = String(d).padStart(2, "0");
+      items.push({ dateStr: `${viewYear}-${mm}-${dd}`, day: d });
+    }
+    return items;
+  }, [viewYear, viewMonth]);
+
+  const monthLabel = new Date(viewYear, viewMonth, 1).toLocaleDateString(
+    locale,
+    {
+      month: "long",
+      year: "numeric",
+    },
+  );
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <Pressable style={calStyles.backdrop} onPress={onClose}>
+        <Pressable
+          style={[calStyles.card, { backgroundColor: colors.surface }]}
+          onPress={(e) => e.stopPropagation()}
+        >
+          {/* Month nav */}
+          <View style={calStyles.nav}>
+            <Pressable
+              onPress={prevMonth}
+              style={calStyles.navBtn}
+              hitSlop={10}
+            >
+              <Feather name="chevron-left" size={20} color={colors.text} />
+            </Pressable>
+            <Text style={[calStyles.monthLabel, { color: colors.text }]}>
+              {monthLabel}
+            </Text>
+            <Pressable
+              onPress={nextMonth}
+              style={calStyles.navBtn}
+              hitSlop={10}
+            >
+              <Feather name="chevron-right" size={20} color={colors.text} />
+            </Pressable>
+          </View>
+
+          {/* Weekday headers */}
+          <View style={calStyles.row}>
+            {Array.from({ length: 7 }, (_, index) =>
+              new Date(2024, 0, 7 + index).toLocaleDateString(locale, {
+                weekday: "short",
+              }),
+            ).map((wd) => (
+              <Text
+                key={wd}
+                style={[calStyles.wd, { color: colors.textMuted }]}
+              >
+                {wd}
+              </Text>
+            ))}
+          </View>
+
+          {/* Day grid */}
+          <View style={calStyles.grid}>
+            {cells.map((cell, idx) => {
+              if (!cell)
+                return <View key={`e-${idx}`} style={calStyles.cell} />;
+              const isSelected = cell.dateStr === selectedDate;
+              const isToday = cell.dateStr === todayStr;
+              const hasEntry = entryDates.has(cell.dateStr);
+              return (
+                <Pressable
+                  key={cell.dateStr}
+                  style={({ pressed }) => [
+                    calStyles.cell,
+                    calStyles.dayCell,
+                    isSelected && {
+                      backgroundColor: colors.primary,
+                      borderRadius: 22,
+                    },
+                    !isSelected &&
+                      isToday && {
+                        borderWidth: 1.5,
+                        borderColor: colors.primary,
+                        borderRadius: 22,
+                      },
+                    { opacity: pressed ? 0.7 : 1 },
+                  ]}
+                  onPress={() => {
+                    onSelect(cell.dateStr);
+                    onClose();
+                  }}
+                >
+                  <Text
+                    style={[
+                      calStyles.dayNum,
+                      {
+                        color: isSelected
+                          ? "#fff"
+                          : isToday
+                            ? colors.primary
+                            : colors.text,
+                      },
+                    ]}
+                  >
+                    {cell.day}
+                  </Text>
+                  {hasEntry && (
+                    <View
+                      style={[
+                        calStyles.dot,
+                        {
+                          backgroundColor: isSelected
+                            ? "rgba(255,255,255,0.75)"
+                            : colors.primary,
+                        },
+                      ]}
+                    />
+                  )}
+                </Pressable>
+              );
+            })}
+          </View>
+
+          {/* Footer */}
+          <View
+            style={[calStyles.footer, { borderTopColor: colors.borderLight }]}
+          >
+            <Pressable
+              onPress={onClose}
+              style={({ pressed }) => [
+                calStyles.cancelBtn,
+                { opacity: pressed ? 0.6 : 1 },
+              ]}
+            >
+              <Text
+                style={[calStyles.cancelText, { color: colors.textSecondary }]}
+              >
+                {cancelLabel}
+              </Text>
+            </Pressable>
+            {selectedDate && (
+              <Pressable
+                onPress={() => {
+                  onSelect(selectedDate);
+                  onClose();
+                }}
+                style={({ pressed }) => [
+                  calStyles.clearBtn,
+                  {
+                    backgroundColor: colors.primary + "15",
+                    opacity: pressed ? 0.7 : 1,
+                  },
+                ]}
+              >
+                <Feather name="x" size={13} color={colors.primary} />
+                <Text style={[calStyles.clearText, { color: colors.primary }]}>
+                  {clearLabel}
+                </Text>
+              </Pressable>
+            )}
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+const calStyles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+  },
+  card: {
+    width: "100%",
+    maxWidth: 360,
+    borderRadius: 20,
+    paddingTop: 20,
+    paddingBottom: 0,
+    shadowColor: "#000",
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 12,
+  },
+  nav: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    marginBottom: 14,
+  },
+  navBtn: {
+    padding: 6,
+    borderRadius: 10,
+  },
+  monthLabel: {
+    fontSize: 17,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: -0.3,
+  },
+  row: {
+    flexDirection: "row",
+    paddingHorizontal: 12,
+    marginBottom: 4,
+  },
+  wd: {
+    flex: 1,
+    textAlign: "center",
+    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  grid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    paddingHorizontal: 12,
+    paddingBottom: 10,
+  },
+  cell: {
+    width: `${100 / 7}%`,
+    aspectRatio: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dayCell: {
+    padding: 2,
+  },
+  dayNum: {
+    fontSize: 15,
+    fontFamily: "Inter_500Medium",
+  },
+  dot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    marginTop: 1,
+  },
+  footer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderTopWidth: 1,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+  },
+  cancelBtn: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  cancelText: {
+    fontSize: 15,
+    fontFamily: "Inter_500Medium",
+  },
+  clearBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+  },
+  clearText: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+  },
+});
+
+/* ─── day picker strip ────────────────────────────────────────────────────── */
+
+function buildDayRange(diaryEntries: DiaryEntry[]): string[] {
+  // Always show last 14 days, plus any dates from entries beyond that
+  const days: Set<string> = new Set();
+  const today = new Date();
+  for (let i = 0; i < 14; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    days.add(toLocalIso(d));
+  }
+  // Also include any entry dates older than 14 days
+  for (const e of diaryEntries) {
+    days.add(e.date);
+  }
+  return Array.from(days).sort((a, b) => b.localeCompare(a));
+}
+
+function DayPickerStrip({
+  days,
+  selectedDate,
+  onSelect,
+  onOpenCalendar,
+  entryDates,
+  colors,
+  locale,
+  allLabel,
+  todayLabel,
+}: {
+  days: string[];
+  selectedDate: string | null;
+  onSelect: (date: string | null) => void;
+  onOpenCalendar: () => void;
+  entryDates: Set<string>;
+  colors: (typeof Colors)["light"];
+  locale: string;
+  allLabel: string;
+  todayLabel: string;
+}) {
+  return (
+    <View
+      style={[
+        dpStyles.wrap,
+        {
+          backgroundColor: colors.surface,
+          borderBottomColor: colors.borderLight,
+        },
+      ]}
+    >
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={dpStyles.scroll}
+      >
+        {/* "All" chip */}
+        <Pressable
+          onPress={() => onSelect(null)}
+          style={({ pressed }) => [
+            dpStyles.chip,
+            dpStyles.allChip,
+            {
+              backgroundColor:
+                selectedDate === null
+                  ? colors.primary
+                  : colors.surfaceSecondary,
+              borderColor:
+                selectedDate === null ? colors.primary : colors.border,
+              opacity: pressed ? 0.75 : 1,
+            },
+          ]}
+        >
+          <Feather
+            name="layers"
+            size={13}
+            color={selectedDate === null ? "#fff" : colors.textSecondary}
+          />
+          <Text
+            style={[
+              dpStyles.allText,
+              { color: selectedDate === null ? "#fff" : colors.textSecondary },
+            ]}
+          >
+            {allLabel}
+          </Text>
+        </Pressable>
+
+        {days.map((d) => {
+          const isSelected = selectedDate === d;
+          const hasEntry = entryDates.has(d);
+          const dt = new Date(d + "T00:00:00");
+          const isToday = d === toLocalIso();
+          const dayName = isToday
+            ? todayLabel
+            : dt.toLocaleDateString(locale, { weekday: "short" });
+          const dayNum = dt.getDate();
+          const monthAbbr = dt.toLocaleDateString(locale, { month: "short" });
+
+          return (
+            <Pressable
+              key={d}
+              onPress={() => onSelect(isSelected ? null : d)}
+              style={({ pressed }) => [
+                dpStyles.chip,
+                {
+                  backgroundColor: isSelected
+                    ? colors.primary
+                    : colors.surfaceSecondary,
+                  borderColor: isSelected
+                    ? colors.primary
+                    : hasEntry
+                      ? colors.primary + "40"
+                      : colors.border,
+                  opacity: pressed ? 0.75 : 1,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  dpStyles.dayName,
+                  {
+                    color: isSelected
+                      ? "rgba(255,255,255,0.8)"
+                      : colors.textMuted,
+                  },
+                ]}
+              >
+                {dayName}
+              </Text>
+              <Text
+                style={[
+                  dpStyles.dayNum,
+                  { color: isSelected ? "#fff" : colors.text },
+                ]}
+              >
+                {dayNum}
+              </Text>
+              <Text
+                style={[
+                  dpStyles.monthAbbr,
+                  {
+                    color: isSelected
+                      ? "rgba(255,255,255,0.7)"
+                      : colors.textMuted,
+                  },
+                ]}
+              >
+                {monthAbbr}
+              </Text>
+              {/* entry dot */}
+              {hasEntry && (
+                <View
+                  style={[
+                    dpStyles.entryDot,
+                    {
+                      backgroundColor: isSelected
+                        ? "rgba(255,255,255,0.7)"
+                        : colors.primary,
+                    },
+                  ]}
+                />
+              )}
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+
+      {/* Calendar picker button */}
+      <Pressable
+        onPress={onOpenCalendar}
+        style={({ pressed }) => [
+          dpStyles.calBtn,
+          { borderLeftColor: colors.borderLight, opacity: pressed ? 0.6 : 1 },
+        ]}
+        hitSlop={4}
+      >
+        <View
+          style={[
+            dpStyles.calBtnInner,
+            {
+              backgroundColor: colors.primary + "18",
+              borderColor: colors.primary + "35",
+            },
+          ]}
+        >
+          <Feather name="calendar" size={15} color={colors.primary} />
+        </View>
+      </Pressable>
+    </View>
+  );
+}
+
+const dpStyles = StyleSheet.create({
+  wrap: {
+    borderBottomWidth: 1,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  scroll: {
+    paddingLeft: 14,
+    paddingRight: 8,
+    paddingVertical: 12,
+    gap: 8,
+    alignItems: "flex-start",
+    flexGrow: 1,
+  },
+  chip: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    gap: 1,
+    minWidth: 54,
+  },
+  allChip: {
+    flexDirection: "row",
+    gap: 5,
+    paddingHorizontal: 16,
+    minWidth: 0,
+  },
+  allText: {
+    fontSize: 13,
+    fontFamily: "Inter_700Bold",
+  },
+  dayName: {
+    fontSize: 10,
+    fontFamily: "Inter_500Medium",
+    textTransform: "uppercase",
+    letterSpacing: 0.3,
+  },
+  dayNum: {
+    fontSize: 18,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: -0.5,
+    lineHeight: 22,
+  },
+  monthAbbr: {
+    fontSize: 10,
+    fontFamily: "Inter_500Medium",
+  },
+  entryDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    marginTop: 2,
+  },
+  calBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderLeftWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  calBtnInner: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+});
+
+/* ─── main screen ─────────────────────────────────────────────────────────── */
+
+export default function DiaryScreen() {
+  const colorScheme = useColorScheme();
+  const colors = Colors[colorScheme === "dark" ? "dark" : "light"];
+  const insets = useSafeAreaInsets();
+  const {
+    observationSessions,
+    patient,
+    removeObservationSession,
+    t,
+    language,
+  } = useApp();
+  const locale = getLocaleForLanguage(language);
+  const observationDiaryEntries = useMemo(
+    () => mapObservationSessionsToDiaryEntries(observationSessions),
+    [observationSessions],
+  );
+  const diaryEntries = useMemo(
+    () =>
+      [...observationDiaryEntries].sort((a, b) => {
+        const dateCmp = b.date.localeCompare(a.date);
+        if (dateCmp !== 0) return dateCmp;
+        return b.time.localeCompare(a.time);
+      }),
+    [observationDiaryEntries],
+  );
+  const topPadding = insets.top + (Platform.OS === "web" ? 67 : 0);
+  const [isSharing, setIsSharing] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [showCalendar, setShowCalendar] = useState(false);
+
+  const todayStr = toLocalIso();
+
+  // ── day picker data ──
+  const dayRange = useMemo(() => buildDayRange(diaryEntries), [diaryEntries]);
+  const entryDates = useMemo(
+    () => new Set(diaryEntries.map((e) => e.date)),
+    [diaryEntries],
+  );
+
+  // ── filtered entries ──
+  const filteredEntries = useMemo(
+    () =>
+      selectedDate
+        ? diaryEntries.filter((e) => e.date === selectedDate)
+        : diaryEntries,
+    [diaryEntries, selectedDate],
+  );
+
+  // ── build flat list data ──
+  const listData = useMemo<ListItem[]>(() => {
+    const sorted = [...filteredEntries].sort((a, b) => {
+      const dateCmp = b.date.localeCompare(a.date);
+      if (dateCmp !== 0) return dateCmp;
+      return b.time.localeCompare(a.time);
+    });
+
+    const items: ListItem[] = [];
+    let lastDate = "";
+    let sectionIdx = 0;
+    for (let i = 0; i < sorted.length; i++) {
+      const entry = sorted[i];
+      const isFirst = i === 0;
+      const isLast = i === sorted.length - 1;
+
+      if (entry.date !== lastDate) {
+        const dayCount = sorted.filter((e) => e.date === entry.date).length;
+        items.push({
+          type: "sectionHeader",
+          date: entry.date,
+          count: dayCount,
+          key: `hdr-${entry.date}`,
+          isFirst: sectionIdx === 0,
+        });
+        sectionIdx++;
+        lastDate = entry.date;
+      }
+
+      const sameDayEntries = sorted.filter((e) => e.date === entry.date);
+      const idxInDay = sameDayEntries.findIndex((e) => e.id === entry.id);
+
+      items.push({
+        type: "entry",
+        entry,
+        key: entry.id,
+        isFirstOfDay: idxInDay === 0,
+        isLastOfDay: idxInDay === sameDayEntries.length - 1,
+        isAbsFirst: isFirst,
+        isAbsLast: isLast,
+      });
+    }
+    return items;
+  }, [filteredEntries]);
+
+  // ── vitals strip (shows selected day or today) ──
+  const vitalsDate = selectedDate ?? todayStr;
+  const todayMetrics = useMemo(
+    () =>
+      diaryEntries
+        .filter((e) => e.date === vitalsDate)
+        .flatMap((e) => e.metrics),
+    [diaryEntries, vitalsDate],
+  );
+  const todayCount = diaryEntries.filter((e) => e.date === todayStr).length;
+
+  const handleExport = async () => {
+    setIsSharing(true);
+    try {
+      const entriesToShare = selectedDate
+        ? diaryEntries.filter((e) => e.date === selectedDate)
+        : diaryEntries;
+      const html = buildDiaryHtml(
+        entriesToShare,
+        patient?.name ?? t("patient"),
+      );
+      await exportHtmlFile("pharmatel-diary.html", html);
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message ? error.message : t("error");
+      Alert.alert(t("error"), message);
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
+  const handleDelete = (entryId: string) => {
+    Alert.alert(t("deleteDiary"), t("deleteDiaryConfirm"), [
+      { text: t("cancel"), style: "cancel" },
+      {
+        text: t("delete"),
+        style: "destructive",
+        onPress: () => {
+          void (async () => {
+            try {
+              await removeObservationSession(entryId);
+            } catch (error) {
+              const message =
+                error instanceof Error && error.message
+                  ? error.message
+                  : t("deleteFailedMessage");
+              Alert.alert(t("deleteFailed"), message);
+            }
+          })();
+        },
+      },
+    ]);
+  };
+
+  const openEntry = (entryId: string) => {
+    const session = observationSessions.find((item) => item.id === entryId);
+    if (session?.doseScheduleId) {
+      router.push({
+        pathname: "/observation/[doseId]",
+        params: { doseId: session.doseScheduleId },
+      });
+      return;
+    }
+
+    if (session) {
+      router.push({
+        pathname: "/diary/new",
+        params: { entryId: session.id },
+      });
+      return;
+    }
+
+    Alert.alert(t("unavailable"), t("missingEntrySource"));
+  };
+
+  return (
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      {/* ── Hero header ── */}
+      <View
+        style={[
+          styles.hero,
+          { paddingTop: topPadding, backgroundColor: colors.primary },
+        ]}
+      >
+        <View style={styles.heroTop}>
+          <View>
+            <Text style={styles.heroTitle}>{t("healthDiary")}</Text>
+            <Text style={styles.heroSub}>
+              {new Date().toLocaleDateString(locale, {
+                weekday: "long",
+                month: "long",
+                day: "numeric",
+              })}
+            </Text>
+          </View>
+          <Pressable
+            onPress={handleExport}
+            disabled={isSharing || diaryEntries.length === 0}
+            style={({ pressed }) => [
+              styles.heroShareBtn,
+              { opacity: pressed || diaryEntries.length === 0 ? 0.45 : 1 },
+            ]}
+          >
+            <Feather name="share-2" size={15} color="#fff" />
+            <Text style={styles.heroShareText}>{t("export")}</Text>
+          </Pressable>
+        </View>
+
+        {/* stats row */}
+        <View style={styles.heroStats}>
+          <View style={styles.heroStatItem}>
+            <Text style={styles.heroStatNum}>{diaryEntries.length}</Text>
+            <Text style={styles.heroStatLabel}>{t("totalEntries")}</Text>
+          </View>
+          <View style={[styles.heroStatDivider]} />
+          <View style={styles.heroStatItem}>
+            <Text style={styles.heroStatNum}>{todayCount}</Text>
+            <Text style={styles.heroStatLabel}>{t("today")}</Text>
+          </View>
+          <View style={styles.heroStatDivider} />
+          <View style={styles.heroStatItem}>
+            <Text style={styles.heroStatNum}>
+              {new Set(diaryEntries.map((e) => e.date)).size}
+            </Text>
+            <Text style={styles.heroStatLabel}>{t("daysLogged")}</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* ── day picker ── */}
+      <DayPickerStrip
+        days={dayRange}
+        selectedDate={selectedDate}
+        onSelect={setSelectedDate}
+        onOpenCalendar={() => setShowCalendar(true)}
+        entryDates={entryDates}
+        colors={colors}
+        locale={locale}
+        allLabel={t("all")}
+        todayLabel={t("today")}
+      />
+
+      {/* ── calendar modal ── */}
+      <CalendarModal
+        visible={showCalendar}
+        selectedDate={selectedDate}
+        entryDates={entryDates}
+        colors={colors}
+        locale={locale}
+        cancelLabel={t("cancel")}
+        clearLabel={t("clear")}
+        onSelect={(date) => setSelectedDate(date)}
+        onClose={() => setShowCalendar(false)}
+      />
+
+      {/* ── timeline list ── */}
+      <FlatList
+        data={listData}
+        keyExtractor={(item) => item.key}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingBottom: insets.bottom + 120 },
+        ]}
+        showsVerticalScrollIndicator={false}
+        ListEmptyComponent={
+          <View style={styles.emptyWrap}>
+            <View
+              style={[
+                styles.emptyCircle,
+                { backgroundColor: colors.primary + "12" },
+              ]}
+            >
+              <Feather
+                name={selectedDate ? "calendar" : "book-open"}
+                size={40}
+                color={colors.primary}
+              />
+            </View>
+            <Text style={[styles.emptyTitle, { color: colors.text }]}>
+              {selectedDate
+                ? `${t("noEntriesOnDate")} ${shortDate(
+                    selectedDate,
+                    locale,
+                    t("today"),
+                    t("yesterday"),
+                  )}`
+                : t("noSymptomDiaryYet")}
+            </Text>
+            <Text style={[styles.emptyDesc, { color: colors.textSecondary }]}>
+              {selectedDate ? t("noObservationsRecorded") : t("diaryInfoEmpty")}
+            </Text>
+            <View style={styles.emptyActions}>
+              {selectedDate && (
+                <Pressable
+                  onPress={() => setSelectedDate(null)}
+                  style={[
+                    styles.emptyBtnOutline,
+                    { borderColor: colors.border },
+                  ]}
+                >
+                  <Feather
+                    name="layers"
+                    size={14}
+                    color={colors.textSecondary}
+                  />
+                  <Text
+                    style={[
+                      styles.emptyBtnOutlineText,
+                      { color: colors.textSecondary },
+                    ]}
+                  >
+                    {t("all")}
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+          </View>
+        }
+        renderItem={({ item }) => {
+          if (item.type === "sectionHeader") {
+            return (
+              <DateSectionHeader
+                date={item.date}
+                count={item.count}
+                isFirst={item.isFirst}
+                colors={colors}
+                locale={locale}
+                todayLabel={t("today")}
+                yesterdayLabel={t("yesterday")}
+              />
+            );
+          }
+          return (
+            <TimelineEntry
+              entry={item.entry}
+              isFirst={item.isAbsFirst}
+              isLast={item.isAbsLast}
+              isLastOfDay={item.isLastOfDay}
+              colors={colors}
+              t={t}
+              onEdit={() => openEntry(item.entry.id)}
+              onDelete={() => handleDelete(item.entry.id)}
+            />
+          );
+        }}
+      />
+
+      {/* ── FAB ── */}
+      <Pressable
+        onPress={() => router.push("/diary/new")}
+        style={({ pressed }) => [
+          styles.fab,
+          {
+            backgroundColor: colors.primary,
+            bottom: insets.bottom + 90,
+            opacity: pressed ? 0.88 : 1,
+            transform: [{ scale: pressed ? 0.95 : 1 }],
+          },
+        ]}
+      >
+        <Feather name="plus" size={24} color="#fff" />
+      </Pressable>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+
+  // hero
+  hero: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    gap: 16,
+  },
+  heroTop: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    paddingTop: 6,
+  },
+  heroTitle: {
+    color: "#fff",
+    fontSize: 26,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: -0.5,
+  },
+  heroSub: {
+    color: "rgba(255,255,255,0.75)",
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    marginTop: 2,
+  },
+  heroShareBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.25)",
+  },
+  heroShareText: {
+    color: "#fff",
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+  },
+  heroStats: {
+    flexDirection: "row",
+    backgroundColor: "rgba(255,255,255,0.15)",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    paddingVertical: 12,
+  },
+  heroStatItem: {
+    flex: 1,
+    alignItems: "center",
+    gap: 2,
+  },
+  heroStatNum: {
+    color: "#fff",
+    fontSize: 22,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: -0.5,
+  },
+  heroStatLabel: {
+    color: "rgba(255,255,255,0.7)",
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
+  },
+  heroStatDivider: {
+    width: 1,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    marginVertical: 4,
+  },
+
+  // vitals
+  vitalsBar: {
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    gap: 8,
+  },
+  vitalsLabel: {
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    paddingHorizontal: 20,
+  },
+  vitalsScroll: {
+    paddingHorizontal: 16,
+    gap: 10,
+  },
+
+  // list
+  listContent: {
+    paddingTop: 20,
+    gap: 0,
+  },
+
+  // empty
+  emptyWrap: {
+    alignItems: "center",
+    paddingHorizontal: 32,
+    paddingTop: 40,
+    gap: 14,
+  },
+  emptyCircle: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 6,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontFamily: "Inter_700Bold",
+    textAlign: "center",
+  },
+  emptyDesc: {
+    fontSize: 14,
+    fontFamily: "Inter_400Regular",
+    textAlign: "center",
+    lineHeight: 22,
+  },
+  emptyActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 6,
+    flexWrap: "wrap",
+    justifyContent: "center",
+  },
+  emptyBtnOutline: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 20,
+    paddingVertical: 13,
+    borderRadius: 14,
+    borderWidth: 1.5,
+  },
+  emptyBtnOutlineText: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+  },
+  emptyBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 16,
+  },
+  emptyBtnText: {
+    color: "#fff",
+    fontSize: 15,
+    fontFamily: "Inter_700Bold",
+  },
+
+  // fab
+  fab: {
+    position: "absolute",
+    right: 20,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#0A7EA4",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+});

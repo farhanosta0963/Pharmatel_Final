@@ -1,0 +1,133 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v10.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v10.0": {
+      "Pharmatel.DesktopUi/1.0.0": {
+        "dependencies": {
+          "CsvHelper": "33.1.0",
+          "GeoCoordinate.NetCore": "1.0.0.1",
+          "GeoCoordinate.NetStandard1": "1.0.1",
+          "Guna.UI2.WinForms": "2.0.4.8",
+          "runtimepack.Microsoft.Windows.SDK.NET.Ref": "10.0.19041.57"
+        },
+        "runtime": {
+          "Pharmatel.DesktopUi.dll": {}
+        }
+      },
+      "runtimepack.Microsoft.Windows.SDK.NET.Ref/10.0.19041.57": {
+        "runtime": {
+          "Microsoft.Windows.SDK.NET.dll": {
+            "assemblyVersion": "10.0.19041.38",
+            "fileVersion": "10.0.19041.55"
+          },
+          "WinRT.Runtime.dll": {
+            "assemblyVersion": "2.2.0.0",
+            "fileVersion": "2.2.0.48161"
+          }
+        }
+      },
+      "CsvHelper/33.1.0": {
+        "runtime": {
+          "lib/net9.0/CsvHelper.dll": {
+            "assemblyVersion": "33.0.0.0",
+            "fileVersion": "33.1.0.26"
+          }
+        }
+      },
+      "GeoCoordinate.NetCore/1.0.0.1": {
+        "runtime": {
+          "lib/netstandard1.6/GeoCoordinate.NetCore.dll": {
+            "assemblyVersion": "1.0.0.1",
+            "fileVersion": "1.0.0.1"
+          }
+        }
+      },
+      "GeoCoordinate.NetStandard1/1.0.1": {
+        "runtime": {
+          "lib/netstandard1.1/GeoCoordinate.NetStandard1.dll": {
+            "assemblyVersion": "1.0.1.0",
+            "fileVersion": "1.0.1.0"
+          }
+        }
+      },
+      "Guna.UI2.WinForms/2.0.4.8": {
+        "dependencies": {
+          "System.Management": "7.0.0"
+        },
+        "runtime": {
+          "lib/net7.0-windows7.0/Guna.UI2.dll": {
+            "assemblyVersion": "2.0.4.8",
+            "fileVersion": "2.0.4.8"
+          }
+        }
+      },
+      "System.Management/7.0.0": {
+        "runtime": {
+          "lib/net7.0/System.Management.dll": {
+            "assemblyVersion": "4.0.0.0",
+            "fileVersion": "7.0.22.51805"
+          }
+        },
+        "runtimeTargets": {
+          "runtimes/win/lib/net7.0/System.Management.dll": {
+            "rid": "win",
+            "assetType": "runtime",
+            "assemblyVersion": "4.0.0.0",
+            "fileVersion": "7.0.22.51805"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "Pharmatel.DesktopUi/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "runtimepack.Microsoft.Windows.SDK.NET.Ref/10.0.19041.57": {
+      "type": "runtimepack",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "CsvHelper/33.1.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-kqfTOZGrn7NarNeXgjh86JcpTHUoeQDMB8t9NVa/ZtlSYiV1rxfRnQ49WaJsob4AiGrbK0XDzpyKkBwai4F8eg==",
+      "path": "csvhelper/33.1.0",
+      "hashPath": "csvhelper.33.1.0.nupkg.sha512"
+    },
+    "GeoCoordinate.NetCore/1.0.0.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-VrR5MLkh0u2qka79JcQ/GUrgHwGidayCA7nKy2430qYX/JHdrHLgwp1MuBTSsygWs0s2V6GQ0Hp8HUMatHiWFw==",
+      "path": "geocoordinate.netcore/1.0.0.1",
+      "hashPath": "geocoordinate.netcore.1.0.0.1.nupkg.sha512"
+    },
+    "GeoCoordinate.NetStandard1/1.0.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-VNgiwP4L7O968FwKujPdJEmeIuWVw6x8VrrlGi3Yoq1Mh58cNJCMyjc24riUPjsJVYMxVl1y6AKzp8lUuZf5Lg==",
+      "path": "geocoordinate.netstandard1/1.0.1",
+      "hashPath": "geocoordinate.netstandard1.1.0.1.nupkg.sha512"
+    },
+    "Guna.UI2.WinForms/2.0.4.8": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-fIY3+UIuuxGAPQACC+DRrRS3kkcrdaKGWvjrWoa5AVkjfXjQci34EYr2iMlWchvmzptEiGKE3sqZYmnBvj9JVw==",
+      "path": "guna.ui2.winforms/2.0.4.8",
+      "hashPath": "guna.ui2.winforms.2.0.4.8.nupkg.sha512"
+    },
+    "System.Management/7.0.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-A4jed4QUviDOm7fJNKAJObEAEkEUXmkGL/w0iyCYTzrl1rezTj8LGFHfsVst4Vb9JwFcTpboiDrvdST48avBpw==",
+      "path": "system.management/7.0.0",
+      "hashPath": "system.management.7.0.0.nupkg.sha512"
+    }
+  }
+}

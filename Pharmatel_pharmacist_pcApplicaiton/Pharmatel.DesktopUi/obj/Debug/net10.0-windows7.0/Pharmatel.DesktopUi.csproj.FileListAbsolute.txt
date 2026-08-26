@@ -1,0 +1,1 @@
+C:\Users\MEDIA\source\repos\Pharmatel.DesktopUi\Pharmatel.DesktopUi\obj\Debug\net10.0-windows7.0\Pharmatel.DesktopUi.csproj.AssemblyReference.cache
